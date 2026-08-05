@@ -1,0 +1,72 @@
+# Horon benchmarks — criterion throughput suite + meaning-addressed scan counts.
+#
+# MANUAL TRIGGER ONLY, deliberately:
+# - Benchmark numbers from shared CI runners are only meaningful as
+#   *relative regression signals* between runs on the same runner class —
+#   published numbers come from a dedicated machine (see BENCHMARKS.md).
+# - horon depends on horon-engine via a sibling path dep — same checkout
+#   dance as ci.yml.
+#
+# To run manually: Actions → Bench → Run workflow (optionally set a filter).
+name: Bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "criterion filter (e.g. snapshot_serialization) — empty runs everything"
+        required: false
+        default: ""
+      scan_counts:
+        description: "also run the meaning-addressed scan-count measurement (slow: builds 10k/50k/100k files)"
+        required: false
+        default: "false"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout horon
+        uses: actions/checkout@v4
+        with:
+          path: horon
+
+      - name: Checkout horon-engine (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: nierto/horon-engine
+          path: horon-engine
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horon
+
+      - name: Record runner specs (context for the numbers)
+        run: |
+          lscpu | grep -E "Model name|^CPU\(s\)|MHz" || true
+          uname -r
+          rustc --version
+
+      - name: Bench throughput
+        working-directory: horon
+        env:
+          GMATH_PROFILE: embedded
+        run: cargo bench --bench throughput -- ${{ inputs.filter }}
+
+      - name: Meaning-addressed scan counts (windowed vs brute-force)
+        if: ${{ inputs.scan_counts == 'true' }}
+        working-directory: horon
+        env:
+          GMATH_PROFILE: embedded
+        run: cargo run --release --example scan_counts
+
+      - name: Upload criterion reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-${{ github.run_id }}
+          path: horon/target/criterion
+          retention-days: 90

@@ -1,0 +1,11 @@
+debug/
+target/
+**/*.rs.bk
+*.pdb
+
+# Working files: planning boards, agent instructions, and archived
+# development notes. Kept locally, never part of the published tree.
+ROADMAP.md
+CLAUDE.md
+archive/
+.claude/

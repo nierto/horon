@@ -1,0 +1,84 @@
+[package]
+name = "horon"
+version = "0.8.0"
+edition = "2021"
+description = "Horon - deterministic hierarchical data store in a single .htt file, with WAL durability, compression, and geometric access control"
+authors = ["Niels Erik Toren"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/nierto/horon"
+homepage = "https://github.com/nierto/horon"
+documentation = "https://docs.rs/horon"
+keywords = ["persistence", "wal", "hyperbolic", "acl", "storage"]
+categories = ["data-structures", "filesystem", "database"]
+# Allowlist: keep the crates.io tarball to the shipped surface.
+include = [
+    "src/**",
+    "benches/**",
+    "examples/**",
+    "tests/**",
+    "docs/HTT_FORMAT.md",
+    "README.md",
+    "LICENSE*",
+    "NOTICE",
+]
+
+[dependencies]
+# Core data structure (path dep until horon-engine publishes; the version
+# field is what crates.io resolves after `cargo publish`)
+horon-engine = { path = "../horon-engine", version = "0.4" }
+
+# Fixed-point arithmetic
+g_math = "0.4.31"
+
+# Compression
+zstd = "0.13"
+
+# CRC32 checksums
+crc32fast = "1.4"
+
+# Logging
+log = "0.4"
+
+
+# Memory-mapped snapshot reads (partial_reads mode)
+memmap2 = "0.9"
+
+# Advisory file locking (flock) — unix only; other platforms are a no-op
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# CSV parsing for the `htt` import CLI (feature-gated)
+csv = { version = "1.3", optional = true }
+
+# Import pipelines (all feature-gated, CLI-only — never in the library
+# path). serde_yaml is frozen upstream (archived 2024) — owner-accepted with
+# an accepted risk: swap for a maintained fork if cargo-deny flags it.
+serde_json = { version = "1", optional = true }
+serde_yaml = { version = "0.9", optional = true }
+rusqlite = { version = "0.32", optional = true, features = ["bundled"] }
+
+[features]
+# Enables the `htt` command-line tool (import pipelines, inspect, query)
+import = ["dep:csv", "dep:serde_json", "dep:serde_yaml", "dep:rusqlite"]
+
+[[bin]]
+name = "htt"
+path = "src/bin/htt.rs"
+required-features = ["import"]
+
+[dev-dependencies]
+tempfile = "3.3"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[profile.test]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3

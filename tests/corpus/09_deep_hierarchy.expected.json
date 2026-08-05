@@ -1,0 +1,150 @@
+{
+  "corpus_version": 1,
+  "file": "09_deep_hierarchy.htt",
+  "notes": "Deep nesting plus wide sibling fan-out, including nodes created implicitly as ancestors. Snapshot entries are parents-before-children; a reader must not assume any stronger ordering.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 0,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": false,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 0,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 20,
+    "header_crc": 4168010345
+  },
+  "file_bytes": 1243,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 20,
+  "nodes": [
+    {
+      "key": "/deep",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/c",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/c/d",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/c/d/e",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/c/d/e/f",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/c/d/e/f/leaf",
+      "data_hex": "64656570",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/sibling_0",
+      "data_hex": "736962",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/sibling_1",
+      "data_hex": "736962",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/a/b/sibling_2",
+      "data_hex": "736962",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_00",
+      "data_hex": "776964652d30",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_01",
+      "data_hex": "776964652d31",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_02",
+      "data_hex": "776964652d32",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_03",
+      "data_hex": "776964652d33",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_04",
+      "data_hex": "776964652d34",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_05",
+      "data_hex": "776964652d35",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_06",
+      "data_hex": "776964652d36",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/deep/wide/child_07",
+      "data_hex": "776964652d37",
+      "meta": [],
+      "semantic_hex": ""
+    }
+  ]
+}

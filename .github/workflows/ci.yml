@@ -1,0 +1,56 @@
+# Horon CI — test suite on x86-64 AND arm64.
+#
+# The arm64 leg is the cross-platform determinism gate: the
+# tests/determinism.rs golden-CRC test must produce byte-identical .htt
+# files on both architectures, or the WAL-as-replication claim is broken.
+#
+# Notes:
+# - horon depends on horon-engine via a sibling path dep, so the engine is
+#   checked out next to it.
+# - ubuntu-24.04-arm runners are free for public repos.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout horon
+        uses: actions/checkout@v4
+        with:
+          path: horon
+
+      - name: Checkout horon-engine (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: nierto/horon-engine
+          path: horon-engine
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: horon
+
+      - name: Test (full sweep — CI env enables dense corruption/truncation loops)
+        working-directory: horon
+        env:
+          GMATH_PROFILE: embedded
+        run: cargo test --features import
+
+      - name: Determinism gate (explicit, for visibility in the job log)
+        working-directory: horon
+        env:
+          GMATH_PROFILE: embedded
+        run: cargo test --test determinism -- --nocapture

@@ -1,0 +1,102 @@
+{
+  "corpus_version": 1,
+  "file": "08_unicode_keys.htt",
+  "notes": "Non-ASCII paths (accents, CJK, emoji) and non-ASCII metadata values. Key lengths are byte lengths, not character counts.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 0,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": false,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 0,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 12,
+    "header_crc": 1841542425
+  },
+  "file_bytes": 977,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 12,
+  "nodes": [
+    {
+      "key": "/café",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/café/menu",
+      "data_hex": "7061796c6f61642d30",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/café/menú",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/café/menú/día",
+      "data_hex": "7061796c6f61642d31",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/emoji",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/emoji/🌍",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/emoji/🌍/🗺",
+      "data_hex": "7061796c6f61642d34",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/mixed",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/mixed/naïve_π_42",
+      "data_hex": "7061796c6f61642d35",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/文書",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/文書/第一章",
+      "data_hex": "7061796c6f61642d32",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/文書/第二章",
+      "data_hex": "7061796c6f61642d33",
+      "meta": [["título", "valeur — accentuée"]],
+      "semantic_hex": ""
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "corpus_version": 1,
+  "file": "02_structural_only.htt",
+  "notes": "semantic_dims = 0, so the has-semantic flag is clear and node entries carry no sem_coords field at all. A reader that unconditionally reads coordinates will desynchronise here.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 0,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": false,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 0,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 7,
+    "header_crc": 3133288984
+  },
+  "file_bytes": 518,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 7,
+  "nodes": [
+    {
+      "key": "/plain",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_00",
+      "data_hex": "7061796c6f61642d30",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_01",
+      "data_hex": "7061796c6f61642d31",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_02",
+      "data_hex": "7061796c6f61642d32",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_03",
+      "data_hex": "7061796c6f61642d33",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_04",
+      "data_hex": "7061796c6f61642d34",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/plain/node_05",
+      "data_hex": "7061796c6f61642d35",
+      "meta": [["kind", "structural"]],
+      "semantic_hex": ""
+    }
+  ]
+}

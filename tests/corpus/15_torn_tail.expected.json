@@ -1,0 +1,84 @@
+{
+  "corpus_version": 1,
+  "file": "15_torn_tail.htt",
+  "notes": "A valid file with a truncated final WAL entry appended. Recovery must stop at the first bad CRC and keep every preceding entry — the expected state is the post-recovery state, and the file is left torn on purpose.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 8,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": true,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 20,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 2,
+    "header_crc": 3568867163
+  },
+  "file_bytes": 3418,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 9,
+  "nodes": [
+    {
+      "key": "/base",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/base/anchor",
+      "data_hex": "616e63686f72",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_0",
+      "data_hex": "73757276697665732d30",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_1",
+      "data_hex": "73757276697665732d31",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_2",
+      "data_hex": "73757276697665732d32",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_3",
+      "data_hex": "73757276697665732d33",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_4",
+      "data_hex": "73757276697665732d34",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/intact/entry_5",
+      "data_hex": "73757276697665732d35",
+      "meta": [],
+      "semantic_hex": ""
+    }
+  ]
+}

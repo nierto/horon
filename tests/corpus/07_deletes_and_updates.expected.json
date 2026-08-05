@@ -1,0 +1,84 @@
+{
+  "corpus_version": 1,
+  "file": "07_deletes_and_updates.htt",
+  "notes": "Live WAL containing INSERT, UPDATE, SET_META and DELETE ops. The expected state is what survives replay, not what was written — a reader that ignores DELETE will report extra nodes.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 8,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": true,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 20,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 2,
+    "header_crc": 3568867163
+  },
+  "file_bytes": 5133,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 9,
+  "nodes": [
+    {
+      "key": "/base",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/base/anchor",
+      "data_hex": "616e63686f72",
+      "meta": [],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn",
+      "data_hex": "",
+      "meta": [["content_type", "application/x-directory"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_0",
+      "data_hex": "6f726967696e616c2d30",
+      "meta": [["state", "original"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_1",
+      "data_hex": "72657772697474656e2d31",
+      "meta": [["state", "rewritten"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_3",
+      "data_hex": "6f726967696e616c2d33",
+      "meta": [["state", "original"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_5",
+      "data_hex": "6f726967696e616c2d35",
+      "meta": [["state", "original"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_7",
+      "data_hex": "72657772697474656e2d37",
+      "meta": [["state", "rewritten"]],
+      "semantic_hex": ""
+    },
+    {
+      "key": "/churn/item_8",
+      "data_hex": "6f726967696e616c2d38",
+      "meta": [["state", "original"]],
+      "semantic_hex": ""
+    }
+  ]
+}

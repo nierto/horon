@@ -1,0 +1,30 @@
+{
+  "corpus_version": 1,
+  "file": "01_empty.htt",
+  "notes": "No nodes at all: empty snapshot, empty WAL. Exercises the zero-length snapshot layout (always uncompressed, even when the compression flag is set) and the CRC over zero bytes.",
+  "header": {
+    "magic_hex": "48545400",
+    "version": 2,
+    "flags_byte": 8,
+    "flags": {
+      "compressed": false,
+      "algorithm": null,
+      "has_semantic": true,
+      "wal_block_compressed": false,
+      "gacl": false,
+      "meaning_addressed": false,
+      "quantized": false
+    },
+    "dimension": 4,
+    "semantic_dims": 16,
+    "tau_hex": "00000000000000000100000000000000",
+    "node_count": 0,
+    "header_crc": 1816681323
+  },
+  "file_bytes": 52,
+  "sidecars": [],
+  "current_epoch": 0,
+  "live_nodes": 0,
+  "nodes": [
+  ]
+}
