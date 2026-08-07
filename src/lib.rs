@@ -56,7 +56,9 @@ pub use error::{HoronError, HoronResult};
 // concept disk. Users never have to name the engine crate.
 pub use horon_engine::{SemanticDisk, SemanticOutlier, Store, StoreError};
 pub use gacl::{Credentials, AccessBand, NodeAccessBands};
-pub use file::{Horon, HoronConfig, DurabilityMode, HistoryRetention, WalTail};
+pub use file::{
+    DurabilityMode, HistoryRetention, Horon, HoronConfig, HoronReader, RefreshOutcome, WalTail,
+};
 pub use history::{DeltaKind, EpochInfo, HoronHistory, HoronStateView, KeyDelta, StateNode};
 pub use quant::SemLayout;
 pub use wal::{WalEntry, WalPayload};

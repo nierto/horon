@@ -143,9 +143,21 @@ that profile. For an idiomatic thread-safe wrapper, see
 
 ## Limits worth knowing
 
-- One writer per file. An advisory lock (unix) makes a second open fail
-  cleanly; on non-unix platforms the lock is a no-op and single-process
-  access is your responsibility. A read-only open mode is planned.
+- One process per file, not merely one writer. Every open takes an
+  exclusive advisory lock (unix), so a second open fails cleanly even for
+  reading; on non-unix platforms the lock is a no-op and single-process
+  access is your responsibility. `HoronReader` lifts this for readers.
+- `partial_reads` (mmap-backed snapshot) is mutually exclusive with two
+  other options, and the constructor rejects the combination rather than
+  degrading silently:
+  - `compression: true` — a zstd frame cannot be partially read, so a
+    compressed snapshot must be materialized whole.
+  - `gacl: true` — access-band filtering needs the resolved node, which the
+    mmap view does not materialize until a read touches it.
+
+  It also implies `lazy_geometry`, so hyperbolic spatial queries are
+  unavailable in that mode: the trade is RAM for reach. Choose per file at
+  open time; the flag is not persisted.
 - GACL is cooperative query-scoping, not a security boundary. Anyone
   holding the file can read all of it; use OS permissions or encryption for
   confidentiality.

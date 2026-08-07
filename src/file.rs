@@ -791,37 +791,7 @@ impl HoronCore {
         let store = Store::with_config(
             StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
         );
-        for entry in &snap_entries {
-            if config.lazy_geometry {
-                Store::put_data_only(&store, &entry.key, &entry.data)
-                    .map_err(HoronError::from)?;
-            } else {
-                // Use stored child_index for deterministic Sarkar reconstruction
-                let child_index = entry.metadata.iter()
-                    .find(|(k, _)| k == "_child_index")
-                    .and_then(|(_, v)| v.parse::<u32>().ok());
-
-                if let Some(idx) = child_index {
-                    store.put_positioned(&entry.key, &entry.data, idx)
-                        .map_err(HoronError::from)?;
-                } else {
-                    Store::put(&store, &entry.key, &entry.data)
-                        .map_err(HoronError::from)?;
-                }
-            }
-            for (mk, mv) in &entry.metadata {
-                if mk != "key" && mk != "size" && mk != "created_at" && mk != "updated_at"
-                    && mk != "_child_index"
-                {
-                    let _ = store.set_meta(&entry.key, mk, mv);
-                }
-            }
-            if !entry.semantic_coords.is_empty()
-                && entry.semantic_coords.iter().any(|&b| b != 0)
-            {
-                let _ = store.set_semantic(&entry.key, entry.semantic_coords.clone());
-            }
-        }
+        load_snapshot_into_store(&store, &snap_entries, config.lazy_geometry)?;
 
         // Replay WAL entries — see scan_wal for the torn-header rationale.
         let lazy = config.lazy_geometry;
@@ -2946,6 +2916,54 @@ fn hilbert_snapshot_ranks(entries: &[NodeEntry], semantic_dims: usize) -> Vec<u1
 /// scan runs until clean EOF, a bad per-entry CRC, a sequence-number break,
 /// or a parse failure (torn tail). Committed, CRC-valid entries are never
 /// dropped by a torn header.
+/// Materialize decoded snapshot entries into a `Store`.
+///
+/// Shared by the read-write open path and [`HoronReader`] so the two cannot
+/// drift: a reader that reconstructed geometry differently from the writer
+/// would report different `nearest()` answers for the same file, and nothing
+/// would flag it. `_child_index` replay is what makes this deterministic
+/// regardless of entry order (see the Sarkar reconstruction test).
+fn load_snapshot_into_store(
+    store: &Store,
+    snap_entries: &[snapshot::NodeEntry],
+    lazy_geometry: bool,
+) -> HoronResult<()> {
+    for entry in snap_entries {
+        if lazy_geometry {
+            Store::put_data_only(store, &entry.key, &entry.data).map_err(HoronError::from)?;
+        } else {
+            // Use stored child_index for deterministic Sarkar reconstruction
+            let child_index = entry
+                .metadata
+                .iter()
+                .find(|(k, _)| k == "_child_index")
+                .and_then(|(_, v)| v.parse::<u32>().ok());
+
+            if let Some(idx) = child_index {
+                store
+                    .put_positioned(&entry.key, &entry.data, idx)
+                    .map_err(HoronError::from)?;
+            } else {
+                Store::put(store, &entry.key, &entry.data).map_err(HoronError::from)?;
+            }
+        }
+        for (mk, mv) in &entry.metadata {
+            if mk != "key"
+                && mk != "size"
+                && mk != "created_at"
+                && mk != "updated_at"
+                && mk != "_child_index"
+            {
+                let _ = store.set_meta(&entry.key, mk, mv);
+            }
+        }
+        if !entry.semantic_coords.is_empty() && entry.semantic_coords.iter().any(|&b| b != 0) {
+            let _ = store.set_semantic(&entry.key, entry.semantic_coords.clone());
+        }
+    }
+    Ok(())
+}
+
 fn scan_wal<F>(
     file: &mut File,
     header: &GeoHeader,
@@ -3397,5 +3415,254 @@ fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::FixedPoint> {
                 assert!(gf.exists(&format!("/t{}/n{}", t, i)));
             }
         }
+    }
+}
+
+// ===========================================================================
+// HoronReader — concurrent read-only access
+// ===========================================================================
+
+/// What a [`HoronReader::refresh`] had to do to catch up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefreshOutcome {
+    /// No new committed entries; the view was already current.
+    UpToDate,
+    /// `n` new WAL entries were applied incrementally.
+    Applied(usize),
+    /// The writer compacted past this reader's position, folding unseen
+    /// entries into the snapshot, so the view was rebuilt from scratch.
+    /// Equivalent to [`WalTail::SnapshotRequired`] on the writer side.
+    Reloaded,
+}
+
+/// A read-only, lock-free view of a `.htt` file.
+///
+/// [`Horon`] takes an exclusive advisory lock on every open, so only one
+/// process may hold a file at all — even for reading. `HoronReader` opens the
+/// file read-only and takes **no lock**, so any number of readers may run
+/// alongside a live writer.
+///
+/// # Why this is safe
+///
+/// Everything in a live file is append-only or replaced atomically:
+/// the header and snapshot are immutable between compactions, WAL entries are
+/// appended, and compaction writes a tempfile and `rename`s it. The one
+/// in-place mutation is the 8-byte WAL header, and the scanner already treats
+/// it as advisory — it derives the entry sequence from the entries themselves
+/// and stops at the first CRC failure, so a torn count cannot mislead a
+/// reader. A reader that opened before a compaction keeps reading the old
+/// inode: a complete, consistent, immutable view.
+///
+/// # Constraints
+///
+/// - **Snapshot semantics.** The view is fixed as of `open`. Call
+///   [`refresh`](Self::refresh) to pick up committed writes.
+/// - **No GACL enforcement.** Queries are unscoped. GACL is cooperative
+///   query-scoping rather than a security boundary (anyone holding the file
+///   can read all of it), so this grants no access the file did not already
+///   give — but use [`Horon`] when you want band filtering.
+/// - **Unix.** Lock-free reading relies on advisory locks. On platforms where
+///   locks are mandatory, an unlocked read of a locked file may fail.
+/// - **A long-lived reader pins its inode.** If the writer compacts, the
+///   pre-compaction file cannot be reclaimed until every reader holding it
+///   closes or refreshes.
+///
+/// Reads never truncate a torn WAL tail — that recovery is a write, and
+/// belongs to the writer.
+pub struct HoronReader {
+    store: Store,
+    path: PathBuf,
+    header: GeoHeader,
+    layout: SemLayout,
+    /// Sequence the next unseen WAL entry would carry.
+    next_seq: u32,
+}
+
+impl HoronReader {
+    /// Open a `.htt` file read-only, without taking a lock.
+    pub fn open<P: AsRef<Path>>(path: P) -> HoronResult<Self> {
+        let path = path.as_ref().to_path_buf();
+        let (store, header, layout, next_seq) = Self::load(&path)?;
+        Ok(Self { store, path, header, layout, next_seq })
+    }
+
+    /// Read the whole file into a fresh `Store`. No lock, no truncation.
+    fn load(path: &Path) -> HoronResult<(Store, GeoHeader, SemLayout, u32)> {
+        let mut file = File::open(path)?;
+
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        std::io::Read::read_exact(&mut file, &mut header_bytes)?;
+        let header = GeoHeader::from_bytes(&header_bytes)?;
+
+        let layout = SemLayout::from_header(&header);
+        let compressed = header.compression_enabled();
+        let snapshot_has_crc = header.version >= 2;
+        let meaning_addressed = header.flags & FLAG_MEANING_ADDRESSED != 0;
+
+        if meaning_addressed {
+            // Skip the v3 bounds section: readers do not place nodes, so the
+            // bounds are not needed to reconstruct the view.
+            let bounds_len = (header.semantic_dims as usize)
+                .saturating_sub(DIM_USER_DEFINED_START)
+                * 16;
+            file.seek(SeekFrom::Current(bounds_len as i64))?;
+        }
+
+        let mut snap_entries =
+            snapshot::read_snapshot(&mut file, compressed, &layout, snapshot_has_crc)?;
+        if meaning_addressed {
+            // Hilbert order on disk; Sarkar replay needs parents first.
+            snap_entries.sort_by(|a, b| {
+                let da = a.key.matches('/').count();
+                let db = b.key.matches('/').count();
+                da.cmp(&db).then(a.key.cmp(&b.key))
+            });
+        }
+
+        let (wal_entry_count, wal_base_seq) = wal::read_wal_header(&mut file)?;
+
+        let store = Store::with_config(
+            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+        );
+        load_snapshot_into_store(&store, &snap_entries, false)?;
+
+        let (next_seq, _valid, _end) = scan_wal(
+            &mut file,
+            &header,
+            &layout,
+            wal_base_seq,
+            wal_entry_count,
+            |entry| replay_entry(&store, entry, false),
+        )?;
+
+        Ok((store, header, layout, next_seq))
+    }
+
+    /// Pick up committed writes since the last load.
+    ///
+    /// Applies new WAL entries incrementally. If the writer compacted past
+    /// this reader's position — folding entries it never saw into the
+    /// snapshot — the view is rebuilt instead, reported as
+    /// [`RefreshOutcome::Reloaded`].
+    pub fn refresh(&mut self) -> HoronResult<RefreshOutcome> {
+        let mut file = File::open(&self.path)?;
+
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        std::io::Read::read_exact(&mut file, &mut header_bytes)?;
+        let header = GeoHeader::from_bytes(&header_bytes)?;
+        let compressed = header.compression_enabled();
+        let meaning_addressed = header.flags & FLAG_MEANING_ADDRESSED != 0;
+
+        if meaning_addressed {
+            let bounds_len = (header.semantic_dims as usize)
+                .saturating_sub(DIM_USER_DEFINED_START)
+                * 16;
+            file.seek(SeekFrom::Current(bounds_len as i64))?;
+        }
+
+        // Skip the snapshot body without decoding it — only the WAL header
+        // beyond it is needed to decide incremental-vs-reload. Same traversal
+        // HoronHistory uses.
+        let mut buf4 = [0u8; 4];
+        std::io::Read::read_exact(&mut file, &mut buf4)?;
+        let snap_byte_len = u32::from_le_bytes(buf4) as u64;
+        std::io::Read::read_exact(&mut file, &mut buf4)?;
+        let node_count = u32::from_le_bytes(buf4);
+        if node_count > 0 && compressed {
+            std::io::Read::read_exact(&mut file, &mut buf4)?;
+            let comp_len = u32::from_le_bytes(buf4) as u64;
+            file.seek(SeekFrom::Current(comp_len as i64))?;
+        } else {
+            file.seek(SeekFrom::Current(snap_byte_len as i64))?;
+        }
+        if header.version >= 2 {
+            file.seek(SeekFrom::Current(4))?; // snapshot CRC
+        }
+        let (wal_entry_count, wal_base_seq) = wal::read_wal_header(&mut file)?;
+
+        // Entries this reader never saw are now inside the snapshot.
+        if wal_base_seq > self.next_seq {
+            let (store, header, layout, next_seq) = Self::load(&self.path)?;
+            self.store = store;
+            self.header = header;
+            self.layout = layout;
+            self.next_seq = next_seq;
+            return Ok(RefreshOutcome::Reloaded);
+        }
+
+        let from = self.next_seq;
+        let mut applied = 0usize;
+        let (next_seq, _valid, _end) = scan_wal(
+            &mut file,
+            &self.header,
+            &self.layout,
+            wal_base_seq,
+            wal_entry_count,
+            |entry| {
+                if entry.seq >= from {
+                    applied += 1;
+                    replay_entry(&self.store, entry, false)
+                } else {
+                    Ok(())
+                }
+            },
+        )?;
+        self.next_seq = next_seq;
+
+        Ok(if applied == 0 {
+            RefreshOutcome::UpToDate
+        } else {
+            RefreshOutcome::Applied(applied)
+        })
+    }
+
+    /// Sequence number the next unseen WAL entry would carry.
+    pub fn next_seq(&self) -> u32 {
+        self.next_seq
+    }
+
+    /// Retrieve the data stored at `key`.
+    pub fn get(&self, key: &str) -> HoronResult<Vec<u8>> {
+        Ok(self.store.get(key)?)
+    }
+
+    /// Whether `key` exists in this view.
+    pub fn exists(&self, key: &str) -> bool {
+        self.store.exists(key)
+    }
+
+    /// Raw semantic coordinates for `key`, or empty when unset.
+    pub fn get_semantic(&self, key: &str) -> HoronResult<Vec<u8>> {
+        Ok(self.store.get_semantic(key)?)
+    }
+
+    /// Direct children of `path`.
+    pub fn children(&self, path: &str) -> HoronResult<Vec<String>> {
+        Ok(self.store.children(path)?)
+    }
+
+    /// Every key under `prefix`, recursively.
+    pub fn list(&self, prefix: &str) -> HoronResult<Vec<String>> {
+        Ok(self.store.list(prefix)?)
+    }
+
+    /// Nearest node to a structural coordinate.
+    pub fn nearest(&self, coords: &[FixedPoint]) -> HoronResult<(String, FixedPoint)> {
+        Ok(self.store.nearest(coords)?)
+    }
+
+    /// k nearest neighbours of an existing node.
+    pub fn neighbors(&self, path: &str, k: usize) -> HoronResult<Vec<String>> {
+        Ok(self.store.neighbors(path, k)?)
+    }
+
+    /// Number of live nodes in this view.
+    pub fn len(&self) -> usize {
+        self.store.len()
+    }
+
+    /// Whether this view holds no nodes.
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
     }
 }
