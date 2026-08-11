@@ -60,9 +60,12 @@ Each line is a shipped capability and the thing it makes possible:
   nearest neighbors over exactly the axes that matter. *Recommendations by
   domain that ignore occupancy and popularity axes.*
 - **Meaning-addressed layout (format v3).** Similar entries become
-  physically adjacent bytes; with `partial_reads`, queries touch a
-  byte-neighborhood instead of the whole file. *Browse a corpus larger than
-  RAM through an mmap window.*
+  physically adjacent bytes; with `partial_reads`, semantic queries run
+  over the mmap without materializing the snapshot — exact by default,
+  and `approximate_semantic` opts into a Hilbert-window mode that touches
+  only a byte-neighborhood (faster, and it can miss neighbours; measure
+  the recall your data gives before relying on it). *Browse a corpus
+  larger than RAM through an mmap window.*
 - **Quantized semantic storage (format v4).** User dims stored as 2-byte
   balanced ternary instead of 16-byte fixed point: ranking-grade precision,
   byte-exact determinism. *`import-vec --quantized` turns a vector-DB

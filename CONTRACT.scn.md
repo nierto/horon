@@ -77,7 +77,7 @@ REPLICATION:  subscribe_wal / wal_entries_since(seq) -> ship entries -> replica 
 TEMPORAL:     HoronConfig{history_retention: HistoryRetention::Archive} -> seal_epoch() at calibration moments
               -> HoronHistory as_of/trajectory/delta; default Off = byte-identical file, no sidecars
 GACL:         file created with GACL -> set_credentials(creds) -> reads/writes/queries filtered per session
-BIG_FILES:    meaning-addressed (v3) + partial_reads -> mmap-window queries; quantized (v4) -> 2 B per user dim
+BIG_FILES:    meaning-addressed (v3) + partial_reads -> exact mmap queries, zero materialization; approximate_semantic=true -> Hilbert-window (byte-neighborhood, can miss neighbours); quantized (v4) -> 2 B per user dim
 NO_CODE:      htt import-* input.x out.htt -> htt query out.htt /path k
 ```
 
