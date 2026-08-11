@@ -35,6 +35,10 @@ fn ma_config(partial: bool) -> HoronConfig {
     HoronConfig {
         meaning_addressed: true,
         semantic_bounds: (0.0, 1000.0),
+        // The Hilbert window is opt-in because it is APPROXIMATE (recall@10
+        // ~44% on uniform 8-dim data — see examples/dim_slice_recall.rs).
+        // These tests exercise that path deliberately; the default is exact.
+        approximate_semantic: true,
         ..plain(partial)
     }
 }
@@ -215,8 +219,15 @@ fn ma_file_is_v3_and_full_mode_reads_it() {
     }
 }
 
+/// The meaning-addressed thesis, on the OPT-IN approximate path.
+///
+/// This fixture is three tight grid clusters queried at their centres, which
+/// is where a space-filling-curve window always succeeds. It demonstrates the
+/// speed claim; it does NOT establish recall. `examples/dim_slice_recall.rs`
+/// measures that on uniform data, where recall is ~44% — which is why the
+/// window is opt-in and exact is the default.
 #[test]
-fn thesis_semantic_query_reads_only_a_byte_neighborhood() {
+fn approximate_mode_reads_only_a_byte_neighborhood() {
     let path = temp_path();
     let all = build_ma_file(&path);
     let total = all.len();

@@ -181,6 +181,20 @@ pub struct HoronConfig {
     /// WAL history retention across compaction (default: `Off` —
     /// byte-identical to pre-epochs behavior). See [`HistoryRetention`].
     pub history_retention: HistoryRetention,
+    /// Allow APPROXIMATE semantic k-NN in `partial_reads` mode (default:
+    /// false — results are exact).
+    ///
+    /// Meaning-addressed files can answer `nearest_semantic` from a window
+    /// around the query's Hilbert address instead of scanning the snapshot.
+    /// That is much faster and **not exact**: a space-filling curve has
+    /// seams, so the window can miss true neighbours. Measured recall@10 on
+    /// uniform 8-dim data is ~44%, and the shortfall is silent.
+    ///
+    /// Exact is the default because a query that quietly returns the wrong
+    /// answer cannot be reasoned about. Enable this only where approximate
+    /// ranking is acceptable and you have measured the recall your data
+    /// actually gives.
+    pub approximate_semantic: bool,
     /// Create the file with quantized semantic tails (format v4 —
     /// `docs/QUANTIZED_SEMANTIC.md`; file-creation-time flag, like `gacl`).
     ///
@@ -212,6 +226,7 @@ impl Default for HoronConfig {
             meaning_addressed: false,
             semantic_bounds: (0.0, 1.0),
             history_retention: HistoryRetention::Off,
+            approximate_semantic: false,
             quantized_semantic: false,
         }
     }
@@ -519,6 +534,38 @@ fn hilbert_from_values(vals: &[FixedPoint], bounds: (f64, f64)) -> u128 {
     HilbertMapper::new(vals.len(), HILBERT_BITS)
         .coords_to_index_fixed(&norm)
         .value()
+}
+
+/// Decode a dimension slice of a raw Q64.64 coordinate vector.
+///
+/// Mirrors the engine's `decode_semantic_slice`. Kept here so a ranking loop
+/// can hoist the (constant) query decode out of the per-candidate path.
+fn decode_dim_slice(coords: &[u8], r: &std::ops::Range<usize>) -> Vec<FixedPoint> {
+    r.clone()
+        .map(|dim| {
+            let start = dim * 16;
+            let end = start + 16;
+            if coords.len() >= end {
+                FixedPoint::from_raw(i128::from_le_bytes(coords[start..end].try_into().unwrap()))
+            } else {
+                FixedPoint::from_int(0)
+            }
+        })
+        .collect()
+}
+
+/// Squared distance between a pre-decoded query slice and raw candidate bytes.
+///
+/// Ranking-only kernel: sqrt is monotone, so ordering by this is identical to
+/// ordering by the true distance, at ~150 ns instead of ~23 us. Callers must
+/// convert the survivors before returning distances to a user.
+fn semantic_distance_sq(
+    qv: &[FixedPoint],
+    coords: &[u8],
+    r: &std::ops::Range<usize>,
+) -> FixedPoint {
+    let cv = decode_dim_slice(coords, r);
+    g_math::fixed_point::imperative::fused::euclidean_distance_squared(qv, &cv)
 }
 
 /// Compute the global-bounds Hilbert address of a semantic coordinate
@@ -838,6 +885,7 @@ impl HoronCore {
             gacl: header.gacl_enabled(),
             gacl_fail_closed: config.gacl_fail_closed,
             lazy_geometry: config.lazy_geometry,
+            approximate_semantic: config.approximate_semantic,
             partial_reads: config.partial_reads,
             meaning_addressed,
             semantic_bounds: ma_bounds.unwrap_or(config.semantic_bounds),
@@ -1010,6 +1058,7 @@ impl HoronCore {
             dimension: header.dimension,
             semantic_dims: header.semantic_dims,
             compression: false,
+            approximate_semantic: config.approximate_semantic,
             auto_compact_threshold: config.auto_compact_threshold,
             wal_batch_size: config.wal_batch_size,
             wal_flush_interval_ms: config.wal_flush_interval_ms,
@@ -1996,9 +2045,21 @@ impl HoronCore {
         let n = view.entries.len();
 
         // Candidate selection.
-        let windowed = self.ma_bounds.is_some() && dim_range.start >= DIM_USER_DEFINED_START;
+        // The window is an APPROXIMATION and is off unless asked for. It is
+        // also only meaningful when the queried slice is one the layout
+        // actually addresses: the window is centred by the first
+        // MAX_HILBERT_DIMS user dims, so ranking by any other slice places it
+        // somewhere unrelated to the answer.
+        let addressed_end = DIM_USER_DEFINED_START + MAX_HILBERT_DIMS;
+        let windowed = self.config.approximate_semantic
+            && self.ma_bounds.is_some()
+            && dim_range.start >= DIM_USER_DEFINED_START
+            && dim_range.end <= addressed_end;
+        // `best` holds SQUARED distances until the survivors are converted.
         let mut best: Vec<(String, FixedPoint)> = Vec::new();
         let mut scanned = 0usize;
+        // Decode the query slice once; it is constant across the whole scan.
+        let qv = decode_dim_slice(query_coords, &dim_range);
 
         let consider = |i: usize, view: &SnapView, best: &mut Vec<(String, FixedPoint)>,
                             scanned: &mut usize| -> HoronResult<()> {
@@ -2012,13 +2073,18 @@ impl HoronCore {
             }
             *scanned += 1;
             let layout = view.layout();
-            let d = if layout.quantized {
+            // Rank by SQUARED distance. sqrt is monotone, so the top-k is
+            // identical, and a Q64.64 sqrt costs ~23 us against ~150 ns for
+            // the squared kernel — 160x, and it is paid once per candidate.
+            // The k survivors are converted to true distances below, so the
+            // returned values are unchanged.
+            let dsq = if layout.quantized {
                 let full = layout.decode_tail(sem)?;
-                Store::semantic_distance(query_coords, &full, dim_range.clone())
+                semantic_distance_sq(&qv, &full, &dim_range)
             } else {
-                Store::semantic_distance(query_coords, sem, dim_range.clone())
+                semantic_distance_sq(&qv, sem, &dim_range)
             };
-            best.push((e.key.clone(), d));
+            best.push((e.key.clone(), dsq));
             Ok(())
         };
 
@@ -2078,7 +2144,30 @@ impl HoronCore {
         }
         p.scanned.store(scanned, Ordering::Relaxed);
 
+        // Squared ranking is order-identical to true distance, so taking the
+        // top k here loses nothing — then pay the sqrt k times, not n times.
+        best.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        best.truncate(k);
+        for (key, d) in best.iter_mut() {
+            *d = match view.by_key.get(key).copied() {
+                Some(i) => {
+                    let sem = view.semantic_of(i)?;
+                    let layout = view.layout();
+                    if layout.quantized {
+                        let full = layout.decode_tail(sem)?;
+                        Store::semantic_distance(query_coords, &full, dim_range.clone())
+                    } else {
+                        Store::semantic_distance(query_coords, sem, dim_range.clone())
+                    }
+                }
+                // Not in the mmap view (shouldn't happen — it came from it);
+                // fall back to the squared value's root rather than lie.
+                None => d.sqrt(),
+            };
+        }
+
         // Merge the overlay store's own semantic results (promoted/new nodes).
+        // Those already carry TRUE distances, so merge after the conversion.
         let overlay = self
             .store
             .nearest_semantic(query_coords, k, dim_range)
