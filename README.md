@@ -6,17 +6,32 @@
 
 # Horon
 
-Durable single-file storage for hierarchical, semantically-addressed data:
-the `.htt` format and its Rust engine.
+**The file is the database. The layout is the index.**
+
+[![Crates.io](https://img.shields.io/crates/v/horon)](https://crates.io/crates/horon)
+[![Documentation](https://docs.rs/horon/badge.svg)](https://docs.rs/horon)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Built by **Niels Erik Toren** · part of the [Geodineum](https://github.com/nierto) ecosystem.
 
-## What it is
+## The idea
 
-Horon persists a deterministic hierarchical store to one `.htt` file. The
-format is documented binary (no protobuf or bincode dependency): a snapshot
-plus a write-ahead log. Every mutation is logged before it takes effect, so
-the file survives crashes and power loss and recovers itself on open.
+Persist a deterministic hierarchical store to one `.htt` file: a documented
+binary snapshot plus a write-ahead log, every mutation logged before it takes
+effect. The file survives crashes and power loss and recovers itself on open.
+Copy the file and you have copied the database, its history, and its indexes.
+
+## Why the layout is the index
+
+The engine gives structure a *location in space*: trees embed into
+hyperbolic geometry, where exponential volume matches exponential branching
+([horon-engine](https://github.com/nierto/horon-engine)). Horon extends that
+to a *location in the file*: with the meaning-addressed layout (format v3),
+a node's byte position becomes a function of its semantic coordinates
+through a space-filling curve over fixed bounds — comparable data becomes
+byte-adjacent on disk. Readers memory-map the file, so N processes share one
+physical copy through the page cache, and the working set is the pages a
+query touches rather than the dataset.
 
 ## Determinism
 
@@ -56,6 +71,13 @@ Each line is a shipped capability and the thing it makes possible:
 - **Embedded zero-server database.** Path-keyed puts and gets, metadata,
   hierarchy walks, in one copyable file. *Build state once, query it
   offline forever.*
+- **Concurrent lock-free readers.** `HoronReader` opens without the writer's
+  exclusive lock: N reader processes alongside one live writer, with
+  `refresh()` for incremental catch-up. `ReaderMode::Partial` memory-maps
+  the snapshot instead of materializing it — measured with 4 concurrent
+  readers, 18 MiB physical per process against 148 MiB materialized, one
+  shared copy in the page cache. *Query a corpus from every process at
+  once, without loading it anywhere.*
 - **Semantic k-NN over dimension slices.** Attach coordinate vectors, query
   nearest neighbors over exactly the axes that matter. *Recommendations by
   domain that ignore occupancy and popularity axes.*
@@ -146,10 +168,13 @@ that profile. For an idiomatic thread-safe wrapper, see
 
 ## Limits worth knowing
 
-- One process per file, not merely one writer. Every open takes an
-  exclusive advisory lock (unix), so a second open fails cleanly even for
-  reading; on non-unix platforms the lock is a no-op and single-process
-  access is your responsibility. `HoronReader` lifts this for readers.
+- One **writer** per file: `Horon::open` takes an exclusive advisory lock
+  (unix), so a second writer fails cleanly. Readers are unbounded —
+  `HoronReader` opens lock-free alongside the writer, in `Full` mode
+  (snapshot materialized) or `Partial` mode (mmap; RAM holds a key→offset
+  index plus writes-since-open, so the file may exceed memory). On
+  non-unix platforms the lock is a no-op and single-process access is your
+  responsibility; lock-free reading is unix-only today.
 - `partial_reads` (mmap-backed snapshot) is mutually exclusive with two
   other options, and the constructor rejects the combination rather than
   degrading silently:
