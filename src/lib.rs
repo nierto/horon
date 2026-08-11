@@ -57,7 +57,8 @@ pub use error::{HoronError, HoronResult};
 pub use horon_engine::{SemanticDisk, SemanticOutlier, Store, StoreError};
 pub use gacl::{Credentials, AccessBand, NodeAccessBands};
 pub use file::{
-    DurabilityMode, HistoryRetention, Horon, HoronConfig, HoronReader, RefreshOutcome, WalTail,
+    DurabilityMode, HistoryRetention, Horon, HoronConfig, HoronReader, ReaderMode, RefreshOutcome,
+    WalTail,
 };
 pub use history::{DeltaKind, EpochInfo, HoronHistory, HoronStateView, KeyDelta, StateNode};
 pub use quant::SemLayout;

@@ -1472,18 +1472,7 @@ impl HoronCore {
     pub fn get(&self, key: &str) -> HoronResult<Vec<u8>> {
         self.check_read(key)?;
         if let Some(p) = &self.partial {
-            if self.store.exists(key) {
-                return Ok(self.store.get(key)?);
-            }
-            if !p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
-                let view = p.view.read().unwrap_or_else(|e| e.into_inner());
-                if let Some(&idx) = view.by_key.get(key) {
-                    return Ok(view.decode(idx)?.data);
-                }
-            }
-            return Err(HoronError::Store(
-                horon_engine::store::StoreError::NotFound(key.to_string()),
-            ));
+            return partial_get(&self.store, p, key);
         }
         Ok(self.store.get(key)?)
     }
@@ -1556,15 +1545,7 @@ impl HoronCore {
             return true;
         }
         if let Some(p) = &self.partial {
-            if p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
-                return false;
-            }
-            return p
-                .view
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .by_key
-                .contains_key(key);
+            return partial_exists(&self.store, p, key);
         }
         false
     }
@@ -1761,29 +1742,7 @@ impl HoronCore {
     pub fn get_semantic(&self, key: &str) -> HoronResult<Vec<u8>> {
         self.check_read(key)?;
         if let Some(p) = &self.partial {
-            if self.store.exists(key) {
-                return Ok(self.store.get_semantic(key)?);
-            }
-            if !p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
-                let view = p.view.read().unwrap_or_else(|e| e.into_inner());
-                if let Some(&idx) = view.by_key.get(key) {
-                    let sem = view.semantic_of(idx)?; // on-disk encoding
-                    let layout = view.layout();
-                    let full = if layout.quantized {
-                        layout.decode_tail(sem)?
-                    } else {
-                        sem.to_vec()
-                    };
-                    // Parity with full mode: all-zero coords = "not set".
-                    if full.iter().any(|&b| b != 0) {
-                        return Ok(full);
-                    }
-                    return Ok(Vec::new());
-                }
-            }
-            return Err(HoronError::Store(
-                horon_engine::store::StoreError::NotFound(key.to_string()),
-            ));
+            return partial_get_semantic(&self.store, p, key);
         }
         Ok(self.store.get_semantic(key)?)
     }
@@ -1792,30 +1751,7 @@ impl HoronCore {
     /// When GACL is active, only children the caller can read are returned.
     pub fn children(&self, path: &str) -> HoronResult<Vec<String>> {
         if let Some(p) = &self.partial {
-            let base = if path == "/" { String::new() } else { path.trim_end_matches('/').to_string() };
-            let direct_child = |k: &str| -> bool {
-                match k.strip_prefix(&base) {
-                    Some(rest) => rest.len() > 1 && rest.starts_with('/') && !rest[1..].contains('/'),
-                    None => false,
-                }
-            };
-            // The overlay's data-only nodes don't maintain parent child
-            // lists, so enumerate the store by prefix instead of children().
-            let mut out: std::collections::BTreeSet<String> = self
-                .store
-                .list("/")
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|k| direct_child(k))
-                .collect();
-            let view = p.view.read().unwrap_or_else(|e| e.into_inner());
-            let tombs = p.tombstones.read().unwrap_or_else(|e| e.into_inner());
-            for e in &view.entries {
-                if direct_child(&e.key) && !tombs.contains(&e.key) {
-                    out.insert(e.key.clone());
-                }
-            }
-            return Ok(out.into_iter().collect());
+            return partial_children(&self.store, p, path);
         }
         let kids = self.store.children(path)?;
         Ok(self.filter_readable_paths(kids))
@@ -1825,16 +1761,7 @@ impl HoronCore {
     /// When GACL is active, only nodes the caller can read are returned.
     pub fn list(&self, prefix: &str) -> HoronResult<Vec<String>> {
         if let Some(p) = &self.partial {
-            let mut out: std::collections::BTreeSet<String> =
-                self.store.list(prefix).unwrap_or_default().into_iter().collect();
-            let view = p.view.read().unwrap_or_else(|e| e.into_inner());
-            let tombs = p.tombstones.read().unwrap_or_else(|e| e.into_inner());
-            for e in &view.entries {
-                if e.key.starts_with(prefix) && !tombs.contains(&e.key) {
-                    out.insert(e.key.clone());
-                }
-            }
-            return Ok(out.into_iter().collect());
+            return partial_list(&self.store, p, prefix);
         }
         let keys = self.store.list(prefix)?;
         Ok(self.filter_readable_paths(keys))
@@ -2037,6 +1964,33 @@ impl HoronCore {
         dim_range: std::ops::Range<usize>,
     ) -> HoronResult<Vec<(String, FixedPoint)>> {
         let p = self.partial.as_ref().expect("partial mode");
+        partial_nearest_semantic(
+            &self.store,
+            p,
+            self.ma_bounds,
+            self.config.approximate_semantic,
+            query_coords,
+            k,
+            dim_range,
+        )
+    }
+}
+
+/// Partial-mode semantic k-NN over the mmap view — shared by [`Horon`] and
+/// [`HoronReader`] so both answer through one implementation. Exact by
+/// default (full proxy-space scan, zero materialization); `allow_window`
+/// opts into the approximate Hilbert byte-neighborhood.
+#[allow(clippy::too_many_arguments)]
+fn partial_nearest_semantic(
+    overlay: &Store,
+    p: &PartialState,
+    ma_bounds: Option<(f64, f64)>,
+    allow_window: bool,
+    query_coords: &[u8],
+    k: usize,
+    dim_range: std::ops::Range<usize>,
+) -> HoronResult<Vec<(String, FixedPoint)>> {
+    {
         if k == 0 {
             return Ok(Vec::new());
         }
@@ -2051,8 +2005,8 @@ impl HoronCore {
         // MAX_HILBERT_DIMS user dims, so ranking by any other slice places it
         // somewhere unrelated to the answer.
         let addressed_end = DIM_USER_DEFINED_START + MAX_HILBERT_DIMS;
-        let windowed = self.config.approximate_semantic
-            && self.ma_bounds.is_some()
+        let windowed = allow_window
+            && ma_bounds.is_some()
             && dim_range.start >= DIM_USER_DEFINED_START
             && dim_range.end <= addressed_end;
         // `best` holds SQUARED distances until the survivors are converted.
@@ -2064,7 +2018,7 @@ impl HoronCore {
         let consider = |i: usize, view: &SnapView, best: &mut Vec<(String, FixedPoint)>,
                             scanned: &mut usize| -> HoronResult<()> {
             let e = &view.entries[i];
-            if tombs.contains(&e.key) || self.store.exists(&e.key) {
+            if tombs.contains(&e.key) || overlay.exists(&e.key) {
                 return Ok(()); // deleted or shadowed by the overlay
             }
             let sem = view.semantic_of(i)?; // on-disk encoding
@@ -2089,8 +2043,8 @@ impl HoronCore {
         };
 
         if windowed && n > 0 {
-            let bounds = self.ma_bounds.unwrap();
-            let sem_dims = self.header.semantic_dims as usize;
+            let bounds = ma_bounds.unwrap();
+            let sem_dims = view.layout().dims;
             let qvals = decode_user_dims(query_coords, sem_dims);
             let span = bounds.1 - bounds.0;
 
@@ -2168,17 +2122,18 @@ impl HoronCore {
 
         // Merge the overlay store's own semantic results (promoted/new nodes).
         // Those already carry TRUE distances, so merge after the conversion.
-        let overlay = self
-            .store
+        let overlay_hits = overlay
             .nearest_semantic(query_coords, k, dim_range)
             .unwrap_or_default();
-        best.extend(overlay);
+        best.extend(overlay_hits);
 
         best.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         best.truncate(k);
         Ok(best)
     }
+}
 
+impl HoronCore {
     /// Snapshot entries examined by the most recent semantic query in
     /// partial mode — the meaning-addressed thesis metric: nearby meaning
     /// should mean a small byte-neighborhood, not a full scan.
@@ -3199,6 +3154,109 @@ where
     Ok((next_seq, valid, valid_end))
 }
 
+
+// ---------------------------------------------------------------------------
+// Partial-mode read resolution, shared by Horon and HoronReader
+// ---------------------------------------------------------------------------
+// Each function resolves a read across the overlay store, the tombstone set,
+// and the mmap snapshot view — extracted from Horon's partial branches so the
+// lock-free reader answers reads through the SAME code instead of a copy that
+// could drift. The writer's behavior is unchanged: its methods delegate here.
+
+fn partial_get(store: &Store, p: &PartialState, key: &str) -> HoronResult<Vec<u8>> {
+    if store.exists(key) {
+        return Ok(store.get(key)?);
+    }
+    if !p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
+        let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(&idx) = view.by_key.get(key) {
+            return Ok(view.decode(idx)?.data);
+        }
+    }
+    Err(HoronError::Store(
+        horon_engine::store::StoreError::NotFound(key.to_string()),
+    ))
+}
+
+fn partial_exists(store: &Store, p: &PartialState, key: &str) -> bool {
+    if store.exists(key) {
+        return true;
+    }
+    if p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
+        return false;
+    }
+    p.view
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .by_key
+        .contains_key(key)
+}
+
+fn partial_get_semantic(store: &Store, p: &PartialState, key: &str) -> HoronResult<Vec<u8>> {
+    if store.exists(key) {
+        return Ok(store.get_semantic(key)?);
+    }
+    if !p.tombstones.read().unwrap_or_else(|e| e.into_inner()).contains(key) {
+        let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+        if let Some(&idx) = view.by_key.get(key) {
+            let sem = view.semantic_of(idx)?; // on-disk encoding
+            let layout = view.layout();
+            let full = if layout.quantized {
+                layout.decode_tail(sem)?
+            } else {
+                sem.to_vec()
+            };
+            // Parity with full mode: all-zero coords = "not set".
+            if full.iter().any(|&b| b != 0) {
+                return Ok(full);
+            }
+            return Ok(Vec::new());
+        }
+    }
+    Err(HoronError::Store(
+        horon_engine::store::StoreError::NotFound(key.to_string()),
+    ))
+}
+
+fn partial_children(store: &Store, p: &PartialState, path: &str) -> HoronResult<Vec<String>> {
+    let base = if path == "/" { String::new() } else { path.trim_end_matches('/').to_string() };
+    let direct_child = |k: &str| -> bool {
+        match k.strip_prefix(&base) {
+            Some(rest) => rest.len() > 1 && rest.starts_with('/') && !rest[1..].contains('/'),
+            None => false,
+        }
+    };
+    // The overlay's data-only nodes don't maintain parent child
+    // lists, so enumerate the store by prefix instead of children().
+    let mut out: std::collections::BTreeSet<String> = store
+        .list("/")
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|k| direct_child(k))
+        .collect();
+    let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+    let tombs = p.tombstones.read().unwrap_or_else(|e| e.into_inner());
+    for e in &view.entries {
+        if direct_child(&e.key) && !tombs.contains(&e.key) {
+            out.insert(e.key.clone());
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+fn partial_list(store: &Store, p: &PartialState, prefix: &str) -> HoronResult<Vec<String>> {
+    let mut out: std::collections::BTreeSet<String> =
+        store.list(prefix).unwrap_or_default().into_iter().collect();
+    let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+    let tombs = p.tombstones.read().unwrap_or_else(|e| e.into_inner());
+    for e in &view.entries {
+        if e.key.starts_with(prefix) && !tombs.contains(&e.key) {
+            out.insert(e.key.clone());
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
 /// Copy a snapshot-resident entry into the overlay Store (partial mode).
 /// A node must be fully in the Store before per-field mutations (set_meta,
 /// set_semantic, updates) so reads see a complete merged view.
@@ -3565,14 +3623,172 @@ pub struct HoronReader {
     layout: SemLayout,
     /// Sequence the next unseen WAL entry would carry.
     next_seq: u32,
+    /// Present in [`ReaderMode::Partial`]: the mmap snapshot view plus the
+    /// WAL overlay/tombstones, resolved through the same `partial_*`
+    /// functions the writer uses.
+    partial: Option<PartialState>,
+    /// v3 global normalization bounds (partial mode, meaning-addressed files).
+    ma_bounds: Option<(f64, f64)>,
+}
+
+/// How a [`HoronReader`] materializes the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReaderMode {
+    /// Decode the whole snapshot into memory (0.9.0 behaviour): full read
+    /// surface including structural hyperbolic queries.
+    Full,
+    /// Memory-map the snapshot; RAM holds only a key→offset index plus
+    /// writes-since-snapshot. N processes share one physical copy via the
+    /// page cache. Implies lazy geometry: structural hyperbolic queries
+    /// (`nearest`, `neighbors`) are unavailable; semantic queries are exact
+    /// by default. Requires an uncompressed, non-GACL file — the same
+    /// constraints as the writer's `partial_reads`.
+    Partial,
 }
 
 impl HoronReader {
-    /// Open a `.htt` file read-only, without taking a lock.
+    /// Open a `.htt` file read-only, without taking a lock
+    /// ([`ReaderMode::Full`]).
     pub fn open<P: AsRef<Path>>(path: P) -> HoronResult<Self> {
+        Self::open_with_mode(path, ReaderMode::Full)
+    }
+
+    /// Open read-only in [`ReaderMode::Partial`]: mmap the snapshot instead
+    /// of materializing it. See [`ReaderMode`] for the constraints.
+    pub fn open_partial<P: AsRef<Path>>(path: P) -> HoronResult<Self> {
+        Self::open_with_mode(path, ReaderMode::Partial)
+    }
+
+    /// Open read-only in the given mode, without taking a lock.
+    pub fn open_with_mode<P: AsRef<Path>>(path: P, mode: ReaderMode) -> HoronResult<Self> {
         let path = path.as_ref().to_path_buf();
-        let (store, header, layout, next_seq) = Self::load(&path)?;
-        Ok(Self { store, path, header, layout, next_seq })
+        match mode {
+            ReaderMode::Full => {
+                let (store, header, layout, next_seq) = Self::load(&path)?;
+                Ok(Self { store, path, header, layout, next_seq, partial: None, ma_bounds: None })
+            }
+            ReaderMode::Partial => Self::load_partial(path),
+        }
+    }
+
+    /// Build the partial (mmap) view: same construction as the writer's
+    /// `partial_reads` mode, minus the exclusive lock, minus torn-tail
+    /// truncation (recovery is a write and belongs to the writer).
+    fn load_partial(path: PathBuf) -> HoronResult<Self> {
+        use std::io::Read;
+        let mut file = File::open(&path)?;
+
+        let mut header_bytes = [0u8; HEADER_SIZE];
+        file.read_exact(&mut header_bytes)?;
+        let header = GeoHeader::from_bytes(&header_bytes)?;
+        let layout = SemLayout::from_header(&header);
+
+        if header.compression_enabled() {
+            return Err(HoronError::Config(
+                "partial mode requires an uncompressed snapshot (a zstd frame cannot be partially read)".into(),
+            ));
+        }
+        if header.gacl_enabled() {
+            return Err(HoronError::Config(
+                "partial mode is not compatible with GACL enforcement".into(),
+            ));
+        }
+
+        let ma_bounds = if header.flags & FLAG_MEANING_ADDRESSED != 0 {
+            Some(HoronCore::read_bounds_section(&mut file, header.semantic_dims as usize)?)
+        } else {
+            None
+        };
+
+        // Snapshot section header (manual — index, not materialize), CRC
+        // over the mmap, structural scan. Mirrors the writer's open_partial.
+        let semantic_dims = header.semantic_dims as usize;
+        let snapshot_has_crc = header.version >= 2;
+        let mut b4 = [0u8; 4];
+        file.read_exact(&mut b4)?;
+        let snap_byte_len = u32::from_le_bytes(b4) as usize;
+        if snap_byte_len > MAX_SNAPSHOT_BYTES {
+            return Err(HoronError::InvalidFormat(format!(
+                "snapshot byte length {} exceeds maximum {}",
+                snap_byte_len, MAX_SNAPSHOT_BYTES
+            )));
+        }
+        file.read_exact(&mut b4)?;
+        let node_count = u32::from_le_bytes(b4) as usize;
+        if node_count > snap_byte_len / 8 + 1 {
+            return Err(HoronError::InvalidFormat(format!(
+                "snapshot node count {} impossible for {} section bytes",
+                node_count, snap_byte_len
+            )));
+        }
+        let raw_start = file.stream_position()? as usize;
+        file.seek(SeekFrom::Start((raw_start + snap_byte_len) as u64))?;
+        let stored_crc = if snapshot_has_crc {
+            file.read_exact(&mut b4)?;
+            Some(u32::from_le_bytes(b4))
+        } else {
+            None
+        };
+        let (wal_entry_count, wal_base_seq) = wal::read_wal_header(&mut file)?;
+
+        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        if let Some(stored) = stored_crc {
+            let region = mmap.get(raw_start..raw_start + snap_byte_len).ok_or_else(|| {
+                HoronError::InvalidFormat("snapshot region exceeds file length".into())
+            })?;
+            let computed = crc32fast::hash(region);
+            if stored != computed {
+                return Err(HoronError::ChecksumMismatch {
+                    expected: stored,
+                    actual: computed,
+                    context: "snapshot section".to_string(),
+                });
+            }
+        }
+
+        let hilbert_fn;
+        let hilbert_of: Option<&dyn Fn(&[u8]) -> u128> = match ma_bounds {
+            Some(b) => {
+                hilbert_fn = move |sem: &[u8]| {
+                    if layout.quantized {
+                        match layout.decode_tail(sem) {
+                            Ok(full) => global_hilbert(&full, semantic_dims, b),
+                            Err(_) => 0,
+                        }
+                    } else {
+                        global_hilbert(sem, semantic_dims, b)
+                    }
+                };
+                Some(&hilbert_fn)
+            }
+            None => None,
+        };
+        let view = SnapView::scan(
+            mmap, raw_start, snap_byte_len, node_count, layout, hilbert_of,
+        )?;
+
+        // WAL overlay: writes since the snapshot, tombstones for deletes.
+        // Derive-don't-trust as everywhere: the scan stops at the first bad
+        // CRC and takes sequence numbers from the entries.
+        let store = Store::with_config(
+            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+        );
+        let mut tombstones = HashSet::new();
+        let (next_seq, _valid, _end) = scan_wal(
+            &mut file,
+            &header,
+            &layout,
+            wal_base_seq,
+            wal_entry_count,
+            |entry| apply_wal_partial(&store, &view, &mut tombstones, entry),
+        )?;
+
+        let partial = Some(PartialState {
+            view: RwLock::new(view),
+            tombstones: RwLock::new(tombstones),
+            scanned: AtomicUsize::new(0),
+        });
+        Ok(Self { store, path, header, layout, next_seq, partial, ma_bounds })
     }
 
     /// Read the whole file into a fresh `Store`. No lock, no truncation.
@@ -3669,33 +3885,62 @@ impl HoronReader {
         }
         let (wal_entry_count, wal_base_seq) = wal::read_wal_header(&mut file)?;
 
-        // Entries this reader never saw are now inside the snapshot.
+        // Entries this reader never saw are now inside the snapshot. The
+        // rebuild keeps the reader's mode: a partial reader also drops its
+        // old mmap here, releasing the pre-compaction inode it was pinning.
         if wal_base_seq > self.next_seq {
-            let (store, header, layout, next_seq) = Self::load(&self.path)?;
-            self.store = store;
-            self.header = header;
-            self.layout = layout;
-            self.next_seq = next_seq;
+            let rebuilt = if self.partial.is_some() {
+                Self::load_partial(self.path.clone())?
+            } else {
+                let (store, header, layout, next_seq) = Self::load(&self.path)?;
+                Self { store, path: self.path.clone(), header, layout, next_seq, partial: None, ma_bounds: None }
+            };
+            *self = rebuilt;
             return Ok(RefreshOutcome::Reloaded);
         }
 
         let from = self.next_seq;
         let mut applied = 0usize;
-        let (next_seq, _valid, _end) = scan_wal(
-            &mut file,
-            &self.header,
-            &self.layout,
-            wal_base_seq,
-            wal_entry_count,
-            |entry| {
-                if entry.seq >= from {
-                    applied += 1;
-                    replay_entry(&self.store, entry, false)
-                } else {
-                    Ok(())
-                }
-            },
-        )?;
+        let next_seq = if let Some(p) = &self.partial {
+            // Same-snapshot catch-up: apply new entries to the overlay and
+            // tombstones through the writer's own replay function; the mmap
+            // view is untouched (the snapshot has not changed).
+            let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+            let mut tombs = p.tombstones.write().unwrap_or_else(|e| e.into_inner());
+            let (next_seq, _valid, _end) = scan_wal(
+                &mut file,
+                &self.header,
+                &self.layout,
+                wal_base_seq,
+                wal_entry_count,
+                |entry| {
+                    if entry.seq >= from {
+                        applied += 1;
+                        apply_wal_partial(&self.store, &view, &mut tombs, entry)
+                    } else {
+                        Ok(())
+                    }
+                },
+            )?;
+            next_seq
+        } else {
+            let (next_seq, _valid, _end) = scan_wal(
+                &mut file,
+                &self.header,
+                &self.layout,
+                wal_base_seq,
+                wal_entry_count,
+                |entry| {
+                    if entry.seq >= from {
+                        applied += 1;
+                        replay_entry(&self.store, entry, false)
+                    } else {
+                        Ok(())
+                    }
+                },
+            )?;
+            next_seq
+        };
         self.next_seq = next_seq;
 
         Ok(if applied == 0 {
@@ -3712,41 +3957,106 @@ impl HoronReader {
 
     /// Retrieve the data stored at `key`.
     pub fn get(&self, key: &str) -> HoronResult<Vec<u8>> {
+        if let Some(p) = &self.partial {
+            return partial_get(&self.store, p, key);
+        }
         Ok(self.store.get(key)?)
     }
 
     /// Whether `key` exists in this view.
     pub fn exists(&self, key: &str) -> bool {
+        if let Some(p) = &self.partial {
+            return partial_exists(&self.store, p, key);
+        }
         self.store.exists(key)
     }
 
     /// Raw semantic coordinates for `key`, or empty when unset.
     pub fn get_semantic(&self, key: &str) -> HoronResult<Vec<u8>> {
+        if let Some(p) = &self.partial {
+            return partial_get_semantic(&self.store, p, key);
+        }
         Ok(self.store.get_semantic(key)?)
     }
 
     /// Direct children of `path`.
     pub fn children(&self, path: &str) -> HoronResult<Vec<String>> {
+        if let Some(p) = &self.partial {
+            return partial_children(&self.store, p, path);
+        }
         Ok(self.store.children(path)?)
     }
 
     /// Every key under `prefix`, recursively.
     pub fn list(&self, prefix: &str) -> HoronResult<Vec<String>> {
+        if let Some(p) = &self.partial {
+            return partial_list(&self.store, p, prefix);
+        }
         Ok(self.store.list(prefix)?)
     }
 
     /// Nearest node to a structural coordinate.
+    ///
+    /// Unavailable in [`ReaderMode::Partial`] (it implies lazy geometry);
+    /// semantic queries are the supported surface there.
     pub fn nearest(&self, coords: &[FixedPoint]) -> HoronResult<(String, FixedPoint)> {
+        if self.partial.is_some() {
+            return Err(HoronError::Config(
+                "structural queries are unavailable in partial reader mode (lazy geometry); use ReaderMode::Full or a semantic query".into(),
+            ));
+        }
         Ok(self.store.nearest(coords)?)
     }
 
     /// k nearest neighbours of an existing node.
+    ///
+    /// Unavailable in [`ReaderMode::Partial`] — see [`Self::nearest`].
     pub fn neighbors(&self, path: &str, k: usize) -> HoronResult<Vec<String>> {
+        if self.partial.is_some() {
+            return Err(HoronError::Config(
+                "structural queries are unavailable in partial reader mode (lazy geometry); use ReaderMode::Full or a semantic query".into(),
+            ));
+        }
         Ok(self.store.neighbors(path, k)?)
+    }
+
+    /// The k nearest nodes to `query_coords` over a dimension slice.
+    ///
+    /// In partial mode this runs over the mmap without materializing the
+    /// snapshot — exact (full proxy-space scan); the approximate Hilbert
+    /// window is writer-side opt-in and not offered here.
+    pub fn nearest_semantic(
+        &self,
+        query_coords: &[u8],
+        k: usize,
+        dim_range: std::ops::Range<usize>,
+    ) -> HoronResult<Vec<(String, FixedPoint)>> {
+        if let Some(p) = &self.partial {
+            return partial_nearest_semantic(
+                &self.store, p, self.ma_bounds, false, query_coords, k, dim_range,
+            );
+        }
+        Ok(self.store.nearest_semantic(query_coords, k, dim_range)?)
+    }
+
+    /// Snapshot entries examined by the most recent partial-mode semantic
+    /// query (`None` in full mode).
+    pub fn last_semantic_scan_count(&self) -> Option<usize> {
+        self.partial.as_ref().map(|p| p.scanned.load(Ordering::Relaxed))
     }
 
     /// Number of live nodes in this view.
     pub fn len(&self) -> usize {
+        if let Some(p) = &self.partial {
+            let view = p.view.read().unwrap_or_else(|e| e.into_inner());
+            let tombs = p.tombstones.read().unwrap_or_else(|e| e.into_inner());
+            let snap_live = view
+                .by_key
+                .keys()
+                .filter(|k| !tombs.contains(*k) && !self.store.exists(k))
+                .count();
+            return snap_live + self.store.len();
+        }
         self.store.len()
     }
 
