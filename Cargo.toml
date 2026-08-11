@@ -1,6 +1,6 @@
 [package]
 name = "horon"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 description = "Horon - deterministic hierarchical data store in a single .htt file, with WAL durability, compression, and geometric access control"
 authors = ["Niels Erik Toren"]
