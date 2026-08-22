@@ -454,14 +454,30 @@ node entry includes `semantic_dims × 16` bytes of Q64.64 fixed-point coordinate
 types, a different fixed-size tail).
 
 These represent user-defined semantic axes (for example category, capability,
-or telemetry dimensions). They are appended to the Sarkar structural coordinates to form
-the full embedding vector used by spatial queries.
+or telemetry dimensions).
+
+**Structural and semantic coordinates are separate**, and are indexed
+separately. They are not concatenated into one vector.
 
 **On load**, the reader:
-1. Reconstructs structural coordinates via Sarkar construction (from tree topology)
-2. Reads semantic coordinates from the file
-3. Concatenates: full_point = [structural_coords | semantic_coords]
-4. Builds spatial index (VP-tree, power diagram, grid) on full_point
+1. Reconstructs structural coordinates via Sarkar construction (from tree
+   topology) — these are never stored in the file
+2. Reads semantic coordinates from the file and attaches them to the node
+3. Builds the *structural* spatial index over structural coordinates only
+4. Serves semantic queries from a *separate* index over the semantic vectors
+   (dimension slices), and concept queries from the semantic disk, which
+   derives its own position as a barycenter of concept anchors
+
+Consequently a node has up to three distinct positions: its structural place in
+the tree's disk, its raw semantic vector, and — if a concept taxonomy is
+configured — a derived position in a second disk. A query answers against
+exactly one of them.
+
+> **Corrected 2026-08-22.** Earlier revisions of this section described the
+> reader as concatenating `[structural | semantic]` and building one index over
+> the result. No release has ever done that; the two coordinate systems have
+> always been stored and indexed separately. The description, not the
+> behaviour, was wrong.
 
 The SET_SEMANTIC op (0x05) allows updating semantic coordinates without
 replacing the node's data or metadata.
