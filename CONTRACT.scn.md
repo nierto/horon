@@ -10,7 +10,7 @@ spec: [docs/HTT_FORMAT.md](docs/HTT_FORMAT.md). Per-symbol truth: docblocks
 Horon := durable single-file hierarchical store | .htt binary format | WAL-first facade over a hyperbolic spatial engine
 Implements: path-keyed CRUD + spatial/semantic k-NN via in-memory Store + append-only WAL + snapshot compaction
 Maintains: deterministic state: g_math Q64.64 fixed point, bit-identical replay on every platform; the WAL doubles as the replication protocol
-Coordinates: horon-engine (geometry) + g_math (arithmetic, pinned =0.4.31); the format is defined by HTT_FORMAT.md, not by this crate
+Coordinates: horon-engine (geometry) + g_math (arithmetic, pinned =0.5.0); the format is defined by HTT_FORMAT.md, not by this crate
 ```
 
 ## ::ANCHOR
@@ -85,7 +85,7 @@ NO_CODE:      htt import-* input.x out.htt -> htt query out.htt /path k
 
 ```
 GUARANTEE: bit-identical replay: same operations, same bytes, any platform
-REQUIRES:  GMATH_PROFILE=embedded (Q64.64); g_math pinned =0.4.31 (do not loosen)
+REQUIRES:  GMATH_PROFILE=embedded (Q64.64); g_math pinned =0.5.0 (do not loosen)
 ENSURES:   WAL doubles as replication; golden CRCs pin the format
 NEVER:     floats in the compute path; f64 params/returns on new API (FixedPoint only)
 
@@ -111,7 +111,7 @@ CONSTRAINT: geometry is derived state, not persisted; lazily-loaded stores re-em
 ## ::GRAPH
 
 ```
-DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.4), g_math =0.4.31, zstd, crc32fast, memmap2
+DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.4), g_math =0.5.0, zstd, crc32fast, memmap2
 PROVIDES_TO:  htt CLI (feature import) | any language reader written from HTT_FORMAT.md
 RE_EXPORTS:   Store, StoreError, SemanticOutlier, SemanticDisk; the engine is reachable through this crate alone
 ORACLES:      tests/corpus_conformance.rs (corpus byte-identity) | tests/determinism.rs (golden CRCs)

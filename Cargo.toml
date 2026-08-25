@@ -29,7 +29,7 @@ include = [
 horon-engine = { path = "../horon-engine", version = "0.6" }
 
 # Fixed-point arithmetic
-g_math = "0.4.31"
+g_math = "0.5.0"
 
 # Compression
 zstd = "0.13"
