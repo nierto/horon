@@ -26,7 +26,7 @@ include = [
 [dependencies]
 # Core data structure (path dep until horon-engine publishes; the version
 # field is what crates.io resolves after `cargo publish`)
-horon-engine = { path = "../horon-engine", version = "0.7" }
+horon-engine = { path = "../horon-engine", version = "0.7.1" }
 
 # Fixed-point arithmetic
 g_math = "0.6"
