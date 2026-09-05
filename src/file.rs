@@ -1641,10 +1641,13 @@ impl HoronCore {
                 let view = p.view.read().unwrap_or_else(|e| e.into_inner());
                 if let Some(&idx) = view.by_key.get(key) {
                     let entry = view.decode(idx)?;
-                    let mut map: HashMap<String, String> =
+                    // Caller metadata only, matching the non-partial path.
+                    // This used to add `key` and `size`; the engine stopped
+                    // synthesising them in 0.8.0, so keeping them here would
+                    // make get_meta return a different shape depending on
+                    // whether partial reads happen to be on.
+                    let map: HashMap<String, String> =
                         entry.metadata.into_iter().collect();
-                    map.insert("key".to_string(), entry.key.clone());
-                    map.insert("size".to_string(), entry.data.len().to_string());
                     return Ok(map);
                 }
             }
