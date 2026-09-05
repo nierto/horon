@@ -37,6 +37,41 @@ const _: () = {
     }
 };
 
+/// When auto-compaction runs, relative to the write that triggers it.
+///
+/// This decides whether a `.htt` file is byte-reproducible. Compaction folds
+/// every WAL entry below a *fence* into the snapshot and leaves the rest in the
+/// WAL, so where the fence lands decides the snapshot/WAL split on disk — and
+/// therefore the bytes, since the snapshot is compressed as a unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutoCompactMode {
+    /// Compact on the writer thread, during the write that crosses the
+    /// threshold. **The default**, because it is the only mode that keeps the
+    /// file byte-reproducible: the fence is that write's sequence number, so
+    /// for a given write sequence it is a pure function of the input.
+    ///
+    /// Costs one compaction stall on the writer per `auto_compact_threshold`
+    /// writes.
+    Sync,
+    /// Compact on a detached thread, off the writer.
+    ///
+    /// **Gives up byte-reproducibility**, and was the only behaviour before
+    /// 0.15.0. The fence is read whenever the thread happens to be scheduled
+    /// while the writer keeps appending, so two runs over identical input
+    /// split their entries differently between snapshot and WAL and produce
+    /// different bytes. The logical content is unaffected — same keys, same
+    /// payloads, same vectors — so choose this only when you need the writer
+    /// never to stall and you are not hashing the file.
+    ///
+    /// **The file may stay locked briefly after you drop the handle.** The
+    /// compaction thread holds its own reference to the store, so the advisory
+    /// lock is released when *that* finishes, not when your `Horon` goes out
+    /// of scope. Reopening the path immediately can fail with
+    /// [`HoronError::Locked`]; retry, or use [`Self::Sync`], where drop is
+    /// final because nothing outlives the handle.
+    Background,
+}
+
 /// Durability mode for WAL writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurabilityMode {
@@ -113,6 +148,11 @@ pub struct HoronConfig {
     pub compression: bool,
     /// Auto-compact when WAL exceeds this many entries (0 = disabled).
     pub auto_compact_threshold: u32,
+    /// Whether auto-compaction runs on the writer or on a detached thread.
+    ///
+    /// Defaults to [`AutoCompactMode::Sync`], which is what makes a `.htt`
+    /// byte-reproducible. See the enum for why the alternative is not.
+    pub auto_compact_mode: AutoCompactMode,
     /// WAL batch size — flush after this many entries (0 = immediate, default).
     pub wal_batch_size: u32,
     /// WAL flush interval in milliseconds (0 = no time-based flush).
@@ -216,6 +256,7 @@ impl Default for HoronConfig {
             semantic_dims: 16,
             compression: true,
             auto_compact_threshold: 10_000,
+            auto_compact_mode: AutoCompactMode::Sync,
             wal_batch_size: 0,
             wal_flush_interval_ms: 0,
             durability: DurabilityMode::Batched,
@@ -879,6 +920,7 @@ impl HoronCore {
             semantic_dims: header.semantic_dims,
             compression: compressed,
             auto_compact_threshold: config.auto_compact_threshold,
+            auto_compact_mode: config.auto_compact_mode,
             wal_batch_size: config.wal_batch_size,
             wal_flush_interval_ms: config.wal_flush_interval_ms,
             durability: config.durability,
@@ -1060,6 +1102,7 @@ impl HoronCore {
             compression: false,
             approximate_semantic: config.approximate_semantic,
             auto_compact_threshold: config.auto_compact_threshold,
+            auto_compact_mode: config.auto_compact_mode,
             wal_batch_size: config.wal_batch_size,
             wal_flush_interval_ms: config.wal_flush_interval_ms,
             durability: config.durability,
@@ -1459,9 +1502,9 @@ impl HoronCore {
         };
 
         if should_compact {
-            // Off the writer thread; errors are logged and recorded in
-            // last_compaction_error() — never fails the write itself.
-            self.spawn_auto_compact();
+            // Errors are logged and recorded in last_compaction_error() —
+            // compaction never fails the write itself.
+            self.run_auto_compact();
         }
 
         Ok(())
@@ -1522,9 +1565,9 @@ impl HoronCore {
         };
 
         if should_compact {
-            // Off the writer thread; errors are logged and recorded in
-            // last_compaction_error() — never fails the write itself.
-            self.spawn_auto_compact();
+            // Errors are logged and recorded in last_compaction_error() —
+            // compaction never fails the write itself.
+            self.run_auto_compact();
         }
 
         Ok(())
@@ -1578,9 +1621,9 @@ impl HoronCore {
         };
 
         if should_compact {
-            // Off the writer thread; errors are logged and recorded in
-            // last_compaction_error() — never fails the write itself.
-            self.spawn_auto_compact();
+            // Errors are logged and recorded in last_compaction_error() —
+            // compaction never fails the write itself.
+            self.run_auto_compact();
         }
 
         Ok(())
@@ -1685,9 +1728,9 @@ impl HoronCore {
         };
 
         if should_compact {
-            // Off the writer thread; errors are logged and recorded in
-            // last_compaction_error() — never fails the write itself.
-            self.spawn_auto_compact();
+            // Errors are logged and recorded in last_compaction_error() —
+            // compaction never fails the write itself.
+            self.run_auto_compact();
         }
 
         Ok(())
@@ -1729,7 +1772,7 @@ impl HoronCore {
         };
 
         if should_compact {
-            self.spawn_auto_compact();
+            self.run_auto_compact();
         }
 
         Ok(())
@@ -2285,10 +2328,25 @@ impl HoronCore {
     /// `last_compaction_error()` by `compact()` itself. The thread holds a
     /// strong reference to the core, so the file stays open (and the final
     /// WAL flush deferred) until the compaction finishes.
-    fn spawn_auto_compact(&self) {
+    /// Run the auto-compaction triggered by the write that just happened.
+    ///
+    /// Under [`AutoCompactMode::Sync`] this compacts inline, so the fence is
+    /// the triggering write's sequence number and the snapshot/WAL split on
+    /// disk is a pure function of the write sequence. That is what makes the
+    /// file byte-reproducible, and it is why Sync is the default.
+    ///
+    /// Under `Background` the work is handed to a detached thread, which reads
+    /// the fence whenever it is scheduled while this writer keeps appending —
+    /// so the split, and the bytes, vary run to run. Errors never fail the
+    /// write in either mode; they surface via `last_compaction_error()`.
+    fn run_auto_compact(&self) {
         // Cheap dedup: if a compaction is already running, the CAS in
-        // compact() would make the new thread a no-op anyway — skip spawning.
+        // compact() would make this a no-op anyway.
         if self.compacting.load(Ordering::SeqCst) {
+            return;
+        }
+        if self.config.auto_compact_mode == AutoCompactMode::Sync {
+            let _ = self.compact();
             return;
         }
         match self.self_weak.get().and_then(Weak::upgrade) {
