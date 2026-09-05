@@ -19,6 +19,7 @@ include = [
     "tests/**",
     "docs/HTT_FORMAT.md",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE*",
     "NOTICE",
 ]
