@@ -1,6 +1,6 @@
 [package]
 name = "horon"
-version = "0.15.1"
+version = "0.16.0"
 edition = "2021"
 description = "Horon - deterministic hierarchical data store in a single .htt file, with WAL durability, compression, and geometric access control"
 authors = ["Niels Erik Toren"]
@@ -27,7 +27,7 @@ include = [
 [dependencies]
 # Core data structure (path dep until horon-engine publishes; the version
 # field is what crates.io resolves after `cargo publish`)
-horon-engine = { path = "../horon-engine", version = "0.8.0" }
+horon-engine = { path = "../horon-engine", version = "0.9.0" }
 
 # Fixed-point arithmetic
 g_math = "0.7"

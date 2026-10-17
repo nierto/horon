@@ -111,7 +111,7 @@ CONSTRAINT: geometry is derived state, not persisted; lazily-loaded stores re-em
 ## ::GRAPH
 
 ```
-DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.8), g_math 0.7, zstd, crc32fast, memmap2
+DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.9), g_math 0.7, zstd, crc32fast, memmap2
 PROVIDES_TO:  htt CLI (feature import) | any language reader written from HTT_FORMAT.md
 RE_EXPORTS:   Store, StoreError, SemanticOutlier, SemanticDisk; the engine is reachable through this crate alone
 ORACLES:      tests/corpus_conformance.rs (corpus byte-identity) | tests/determinism.rs (golden CRCs)
