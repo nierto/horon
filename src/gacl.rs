@@ -20,7 +20,7 @@
 //! rely on it. Use OS/filesystem permissions or encryption for real
 //! confidentiality.
 
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 
 use crate::format::*;
 

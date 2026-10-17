@@ -4,7 +4,7 @@
 //! spatially-aware hierarchical store. Clone to share across threads.
 //!
 //! ```text
-//! GMATH_PROFILE=embedded cargo run --example geostore
+//! cargo run --example geostore
 //! ```
 
 use std::collections::HashMap;
@@ -134,8 +134,8 @@ impl GeoStore {
     // --- Spatial queries ---
 
     /// Find the node closest to the given coordinates.
-    pub fn nearest(&self, coords: &[g_math::fixed_point::FixedPoint])
-        -> HoronResult<(String, g_math::fixed_point::FixedPoint)> {
+    pub fn nearest(&self, coords: &[g_math::fixed_point::Q64_64])
+        -> HoronResult<(String, g_math::fixed_point::Q64_64)> {
         self.inner.nearest(coords)
     }
 
@@ -336,6 +336,6 @@ fn main() {
 }
 
 /// Exact fixed-point coordinates from decimal literals.
-fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::FixedPoint> {
-    vals.iter().map(|&v| g_math::fixed_point::FixedPoint::from_f64(v)).collect()
+fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::Q64_64> {
+    vals.iter().map(|&v| g_math::fixed_point::Q64_64::from_f64(v)).collect()
 }

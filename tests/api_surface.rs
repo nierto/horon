@@ -11,7 +11,7 @@ use horon::{
     Horon, HoronConfig, HoronError, HoronResult, SemanticDisk, SemanticOutlier, Store,
     StoreError,
 };
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use std::ops::Range;
 
 #[test]

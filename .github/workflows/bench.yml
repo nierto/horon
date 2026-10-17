@@ -53,15 +53,11 @@ jobs:
 
       - name: Bench throughput
         working-directory: horon
-        env:
-          GMATH_PROFILE: embedded
         run: cargo bench --bench throughput -- ${{ inputs.filter }}
 
       - name: Meaning-addressed scan counts (windowed vs brute-force)
         if: ${{ inputs.scan_counts == 'true' }}
         working-directory: horon
-        env:
-          GMATH_PROFILE: embedded
         run: cargo run --release --example scan_counts
 
       - name: Upload criterion reports

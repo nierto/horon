@@ -618,7 +618,7 @@ fn decode_range(coords: &[u8], dim_range: &Range<usize>) -> Vec<f64> {
             let start = dim * 16;
             let end = start + 16;
             if coords.len() >= end {
-                g_math::fixed_point::FixedPoint::from_raw(i128::from_le_bytes(
+                g_math::fixed_point::Q64_64::from_raw(i128::from_le_bytes(
                     coords[start..end].try_into().unwrap(),
                 ))
                 .to_f64()

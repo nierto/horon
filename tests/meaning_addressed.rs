@@ -5,7 +5,7 @@
 //! coordinates, so a semantic query touches only the byte-neighborhood of
 //! the query point — measured here by `last_semantic_scan_count()`.
 //!
-//! Run: GMATH_PROFILE=embedded cargo test --test meaning_addressed
+//! Run: cargo test --test meaning_addressed
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -45,7 +45,7 @@ fn ma_config(partial: bool) -> HoronConfig {
 
 /// Encode user-dim values (dims 16..) as a full semantic vector.
 fn coords(user_vals: &[f64]) -> Vec<u8> {
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
     let mut out = vec![0u8; SEM_DIMS as usize * 16];
     for (d, v) in user_vals.iter().enumerate() {
         let off = (16 + d) * 16;
@@ -240,7 +240,7 @@ fn approximate_mode_reads_only_a_byte_neighborhood() {
     let got = part.nearest_semantic(&query, k, 16..18).unwrap();
 
     // Ground truth by brute force over what we inserted.
-    let mut expected: Vec<(String, g_math::fixed_point::FixedPoint)> = all
+    let mut expected: Vec<(String, g_math::fixed_point::Q64_64)> = all
         .iter()
         .map(|(key, sem)| (key.clone(), Store::semantic_distance(&query, sem, 16..18)))
         .collect();
@@ -250,7 +250,7 @@ fn approximate_mode_reads_only_a_byte_neighborhood() {
     // The cluster grid produces distance TIES; ordering among equal
     // distances is unspecified. Compare the distance sequences, and verify
     // every returned key's reported distance is its true distance.
-    let truth: HashMap<&String, g_math::fixed_point::FixedPoint> = all
+    let truth: HashMap<&String, g_math::fixed_point::Q64_64> = all
         .iter()
         .map(|(key, sem)| (key, Store::semantic_distance(&query, sem, 16..18)))
         .collect();

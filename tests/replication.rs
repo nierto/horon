@@ -6,7 +6,7 @@
 //! entries are delivered strictly after the primary's fsync, so a replica
 //! never holds data the primary could lose.
 //!
-//! Run: GMATH_PROFILE=embedded cargo test --test replication
+//! Run: cargo test --test replication
 
 use std::path::PathBuf;
 use std::sync::Arc;

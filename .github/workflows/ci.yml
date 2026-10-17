@@ -45,12 +45,8 @@ jobs:
 
       - name: Test (full sweep — CI env enables dense corruption/truncation loops)
         working-directory: horon
-        env:
-          GMATH_PROFILE: embedded
         run: cargo test --features import
 
       - name: Determinism gate (explicit, for visibility in the job log)
         working-directory: horon
-        env:
-          GMATH_PROFILE: embedded
         run: cargo test --test determinism -- --nocapture

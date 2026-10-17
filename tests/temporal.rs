@@ -8,7 +8,7 @@
 use horon::{
     DeltaKind, DurabilityMode, Horon, HoronConfig, HistoryRetention, HoronHistory,
 };
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 

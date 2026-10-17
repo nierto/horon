@@ -21,7 +21,7 @@ fn temp_path() -> std::path::PathBuf {
 }
 
 fn coords(vals: &[f64]) -> Vec<u8> {
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
     let mut out = vec![0u8; SEM_DIMS as usize * 16];
     for (d, v) in vals.iter().enumerate() {
         let off = (16 + d) * 16;
@@ -150,7 +150,7 @@ fn partial_reader_rejects_incompatible_files() {
 
 #[test]
 fn structural_queries_error_loudly_in_partial_mode() {
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
     let path = temp_path();
     build_fixture(&path);
     let part = HoronReader::open_partial(&path).unwrap();
@@ -193,7 +193,7 @@ fn partial_refresh_applies_increments_and_reloads_past_compaction() {
     assert_eq!(part.get("/d/901").unwrap(), b"post");
     assert_eq!(part.get("/d/902").unwrap(), b"after");
     // Still partial after the rebuild: structural queries still refuse.
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
     assert!(part.nearest(&[FixedPoint::ZERO; 4]).is_err(), "mode not preserved");
 
     drop(gf);

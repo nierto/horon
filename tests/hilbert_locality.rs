@@ -8,7 +8,7 @@
 //!   3. The full premise: semantic coords from .htt → Hilbert index → memory
 //!      locality (nearby meaning = nearby storage offsets)
 //!
-//! Run with: GMATH_PROFILE=embedded cargo test --test hilbert_locality -- --nocapture
+//! Run with: cargo test --test hilbert_locality -- --nocapture
 
 use std::path::PathBuf;
 
@@ -313,7 +313,7 @@ fn sarkar_reconstruction_after_compaction() {
 /// release that touches compaction, snapshot layout, or Sarkar replay:
 ///
 /// ```text
-/// GMATH_PROFILE=embedded cargo test --release --test hilbert_locality -- --ignored --nocapture
+/// cargo test --release --test hilbert_locality -- --ignored --nocapture
 /// ```
 #[test]
 #[ignore = "10_000 nodes, ~6 min; the scale the bug manifested at. Run with --ignored"]

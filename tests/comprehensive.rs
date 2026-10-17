@@ -13,7 +13,7 @@
 //!   - Semantic coordinate roundtrip
 //!   - Edge cases and stress conditions
 //!
-//! Run with: GMATH_PROFILE=embedded cargo test --test comprehensive -- --nocapture
+//! Run with: cargo test --test comprehensive -- --nocapture
 
 use std::collections::HashSet;
 use std::fs;
@@ -27,7 +27,7 @@ use horon::format::*;
 use horon::header::GeoHeader;
 use horon::snapshot::NodeEntry;
 use horon::wal::{WalEntry, WalPayload};
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use tempfile::NamedTempFile;
 
 // ---------------------------------------------------------------------------
@@ -1949,6 +1949,6 @@ fn short_semantic_vector_cannot_corrupt_wal() {
 }
 
 /// Exact fixed-point coordinates from decimal literals.
-fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::FixedPoint> {
-    vals.iter().map(|&v| g_math::fixed_point::FixedPoint::from_f64(v)).collect()
+fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::Q64_64> {
+    vals.iter().map(|&v| g_math::fixed_point::Q64_64::from_f64(v)).collect()
 }

@@ -32,7 +32,7 @@
 //! `examples/scan_counts.rs`. Benchmarks here use small node counts and
 //! pre-built trees to keep runtimes sane.
 //!
-//! Run with: GMATH_PROFILE=embedded cargo bench --bench throughput
+//! Run with: cargo bench --bench throughput
 
 use std::fs;
 use std::io::Cursor;
@@ -536,7 +536,7 @@ fn bench_read_throughput(c: &mut Criterion) {
 // ===========================================================================
 
 fn bench_spatial(c: &mut Criterion) {
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
 
     let mut group = c.benchmark_group("spatial");
     group.sample_size(20);
@@ -587,7 +587,7 @@ fn bench_spatial(c: &mut Criterion) {
 
 fn bench_gacl(c: &mut Criterion) {
     use horon::gacl::{NodeAccessBands, AccessBand, Credentials};
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
 
     let mut group = c.benchmark_group("gacl");
 

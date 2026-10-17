@@ -6,7 +6,7 @@
 //! what CAN be tested is that nothing relies on Drop/page-cache flushes and
 //! that recovery never trusts unverified bytes.
 //!
-//! Run: GMATH_PROFILE=embedded cargo test --test durability
+//! Run: cargo test --test durability
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};

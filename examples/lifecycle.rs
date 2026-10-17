@@ -10,11 +10,11 @@
 //! the path, meaning in the dims.
 //!
 //! ```text
-//! GMATH_PROFILE=embedded cargo run --example lifecycle
+//! cargo run --example lifecycle
 //! ```
 
 use horon::{Horon, HoronConfig, HoronResult};
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 
 /// Semantic coordinates are raw Q64.64 bytes, 16 per dimension. Dims 0–15
 /// are reserved (access control); your dims start at 16. This helper places

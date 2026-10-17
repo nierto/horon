@@ -17,7 +17,7 @@ const K: usize = 10;
 const QUERIES: usize = 40;
 
 fn coords(vals: &[f64]) -> Vec<u8> {
-    use g_math::fixed_point::FixedPoint;
+    use g_math::fixed_point::Q64_64 as FixedPoint;
     let mut out = vec![0u8; SEM_DIMS as usize * 16];
     for (d, v) in vals.iter().enumerate() {
         let off = (16 + d) * 16;

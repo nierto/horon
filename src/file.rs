@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 use std::thread::JoinHandle;
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use std::time::{Duration, Instant};
 
 use horon_engine::{SemanticOutlier, Store, StoreConfig};
@@ -713,7 +713,7 @@ impl HoronCore {
 
     fn create_new(path: &Path, config: HoronConfig) -> HoronResult<Self> {
         Self::validate_mode_combos(&config)?;
-        let tau_raw = g_math::fixed_point::FixedPoint::from_int(1).raw();
+        let tau_raw = g_math::fixed_point::Q64_64::from_int(1).raw();
         let mut header = GeoHeader::with_gacl(
             config.dimension,
             config.semantic_dims,
@@ -781,7 +781,7 @@ impl HoronCore {
         // into the store. An f64 round-trip here would silently replay a
         // file at a tau it was never written with.
         let store = Store::with_config(
-            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(tau_raw)),
+            StoreConfig::new().tau(g_math::fixed_point::Q64_64::from_raw(tau_raw)),
         );
 
         let wal = WalWriter {
@@ -877,7 +877,7 @@ impl HoronCore {
 
         // Build store with tau from header
         let store = Store::with_config(
-            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+            StoreConfig::new().tau(g_math::fixed_point::Q64_64::from_raw(header.tau_raw)),
         );
         load_snapshot_into_store(&store, &snap_entries, config.lazy_geometry)?;
 
@@ -1060,7 +1060,7 @@ impl HoronCore {
 
         // Overlay store (data-only; no geometry in partial mode) + WAL replay.
         let store = Store::with_config(
-            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+            StoreConfig::new().tau(g_math::fixed_point::Q64_64::from_raw(header.tau_raw)),
         );
         let mut tombstones = HashSet::new();
         // Epoch counter restoration (temporal epochs) — see full-mode open.
@@ -3482,8 +3482,8 @@ fn replay_entry(store: &Store, entry: &WalEntry, lazy_geometry: bool) -> HoronRe
 mod tests {
 
 /// Exact fixed-point coordinates from decimal literals.
-fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::FixedPoint> {
-    vals.iter().map(|&v| g_math::fixed_point::FixedPoint::from_f64(v)).collect()
+fn fp(vals: &[f64]) -> Vec<g_math::fixed_point::Q64_64> {
+    vals.iter().map(|&v| g_math::fixed_point::Q64_64::from_f64(v)).collect()
 }
 
     use super::*;
@@ -3832,7 +3832,7 @@ impl HoronReader {
         // Derive-don't-trust as everywhere: the scan stops at the first bad
         // CRC and takes sequence numbers from the entries.
         let store = Store::with_config(
-            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+            StoreConfig::new().tau(g_math::fixed_point::Q64_64::from_raw(header.tau_raw)),
         );
         let mut tombstones = HashSet::new();
         let (next_seq, _valid, _end) = scan_wal(
@@ -3888,7 +3888,7 @@ impl HoronReader {
         let (wal_entry_count, wal_base_seq) = wal::read_wal_header(&mut file)?;
 
         let store = Store::with_config(
-            StoreConfig::new().tau(g_math::fixed_point::FixedPoint::from_raw(header.tau_raw)),
+            StoreConfig::new().tau(g_math::fixed_point::Q64_64::from_raw(header.tau_raw)),
         );
         load_snapshot_into_store(&store, &snap_entries, false)?;
 

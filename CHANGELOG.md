@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **g_math 0.6 → 0.7**, with horon-engine. 0.7 makes the fixed-point format a
+  type and removes `FixedPoint` and `GMATH_PROFILE`; horon uses
+  `g_math::fixed_point::Q64_64`, the Q64.64 format the embedded profile
+  selected. Not a disk-format change: the corpus and both determinism suites
+  regenerate byte-identically. Recomputed distances and scores can differ
+  from 0.15.1 in the last place (0.7 rounds the transcendentals correctly),
+  so do not mix query results across the boundary in one dataset.
+- Picks up horon-engine's fixes for a small `tau` (which now panicked on the
+  first insert instead of silently wrapping) and for outside-disk queries.
+
 ## 0.15.1
 
 ### Fixed

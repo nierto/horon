@@ -8,7 +8,7 @@
 //! which works in arbitrary dimensions via bit-level Gray code transforms
 //! and axis rotations.
 
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 
 /// A Hilbert space-filling curve mapper.
 ///

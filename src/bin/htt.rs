@@ -24,7 +24,7 @@ use std::process::exit;
 
 use horon::header::GeoHeader;
 use horon::{Horon, HoronConfig};
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 
 const USER_DIM_START: usize = 16;
 

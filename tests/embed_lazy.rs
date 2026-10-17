@@ -7,7 +7,7 @@
 //! (snapshot-resident nodes promoted then embedded).
 
 use horon::{DurabilityMode, Horon, HoronConfig};
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 

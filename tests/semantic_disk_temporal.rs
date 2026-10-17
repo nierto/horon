@@ -8,7 +8,7 @@
 
 use horon::{DurabilityMode, Horon, HoronConfig, HistoryRetention, HoronHistory};
 use horon_engine::SemanticDisk;
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;
 

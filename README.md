@@ -120,7 +120,7 @@ sidecars), [docs/QUANTIZED_SEMANTIC.md](docs/QUANTIZED_SEMANTIC.md)
 ## Quick start
 
 Create, use, modify, reopen. The `lifecycle` example runs this sequence
-with assertions: `GMATH_PROFILE=embedded cargo run --example lifecycle`.
+with assertions: `cargo run --example lifecycle`.
 
 ```rust
 use horon::{Horon, HoronConfig};
@@ -162,8 +162,8 @@ htt import-csv courses.csv courses.htt --path-cols category --dim-cols x,y
 htt query courses.htt /category/some-course 5
 ```
 
-Build with `GMATH_PROFILE=embedded`; the determinism contract is defined on
-that profile. For an idiomatic thread-safe wrapper, see
+All arithmetic is g_math Q64.64 (`Q64_64`), fixed by type: no build profile
+is involved. For an idiomatic thread-safe wrapper, see
 `examples/geostore.rs`.
 
 ## Limits worth knowing

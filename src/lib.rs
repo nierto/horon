@@ -13,7 +13,7 @@
 //!
 //! ```no_run
 //! use horon::Horon;
-//! use g_math::fixed_point::FixedPoint;
+//! use g_math::fixed_point::Q64_64 as FixedPoint;
 //!
 //! // Open or create a .htt file
 //! let htt = Horon::open("data.htt").unwrap();

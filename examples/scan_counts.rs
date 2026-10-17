@@ -6,13 +6,13 @@
 //! semantic queries: entries touched (`last_semantic_scan_count()`) vs the
 //! full-scan baseline (= all entries), plus wall-clock per query.
 //!
-//! Run: GMATH_PROFILE=embedded cargo run --release --example scan_counts
+//! Run: cargo run --release --example scan_counts
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use horon::{DurabilityMode, Horon, HoronConfig};
-use g_math::fixed_point::FixedPoint;
+use g_math::fixed_point::Q64_64 as FixedPoint;
 
 const SEM_DIMS: u8 = 20; // 16 reserved + 4 user
 
