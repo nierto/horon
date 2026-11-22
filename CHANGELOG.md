@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.1 - 2026-11-22
+
+### Changed
+
+- **horon-engine 0.9.1 and g_math 0.7.3** (requirement now `0.7.3`). 0.7.3
+  makes g_math's division, square roots and transcendentals much faster and
+  returns the same integers as before. Not a disk-format change: the corpus
+  regenerates byte-identically and both determinism checksums still match.
+  No API change.
+
+  Measured with `benches/throughput.rs` against 0.7.0, same machine and
+  settings: spatial queries (`nearest`, `neighbors`) −60% to −78%, opening
+  a file −59% to −62%, cold start from WAL replay −51% to −53% and from a
+  snapshot −55% to −62%. Serialization, `get`/`exists`, GACL checks and
+  compaction do no geometry and move by a few percent either way; a full
+  insert is bound by the disk sync and is unchanged.
+
 ## 0.16.0 - 2026-10-17
 
 ### Changed

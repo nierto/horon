@@ -85,7 +85,7 @@ NO_CODE:      htt import-* input.x out.htt -> htt query out.htt /path k
 
 ```
 GUARANTEE: bit-identical replay: same operations, same bytes, any platform
-REQUIRES:  g_math 0.7 Q64_64 (Fixed<i128, 64>); one g_math minor across horon and horon-engine
+REQUIRES:  g_math 0.7.3+ Q64_64 (Fixed<i128, 64>); one g_math minor across horon and horon-engine
 ENSURES:   WAL doubles as replication; golden CRCs pin the format
 NEVER:     floats in the compute path; f64 params/returns on new API (FixedPoint only)
 
@@ -111,7 +111,7 @@ CONSTRAINT: geometry is derived state, not persisted; lazily-loaded stores re-em
 ## ::GRAPH
 
 ```
-DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.9), g_math 0.7, zstd, crc32fast, memmap2
+DEPENDS_ON:   horon-engine (sibling path dep until published; version 0.9.1), g_math 0.7.3+, zstd, crc32fast, memmap2
 PROVIDES_TO:  htt CLI (feature import) | any language reader written from HTT_FORMAT.md
 RE_EXPORTS:   Store, StoreError, SemanticOutlier, SemanticDisk; the engine is reachable through this crate alone
 ORACLES:      tests/corpus_conformance.rs (corpus byte-identity) | tests/determinism.rs (golden CRCs)
